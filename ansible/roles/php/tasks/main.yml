@@ -1,0 +1,115 @@
+---
+- name: システムパッケージを更新
+  yum:
+    name: "*"
+    state: latest
+    update_cache: yes
+
+- name: PHPと必要なパッケージをインストール
+  yum:
+    name:
+      - php
+      - php-fpm
+      - php-cli
+      - php-common
+      - php-mysqlnd
+      - php-zip
+      - php-devel
+      - php-gd
+      - php-mbstring
+      - php-curl
+      - php-xml
+      - php-json
+      - php-bcmath
+      - php-openssl
+      - php-tokenizer
+      - php-fileinfo
+      - php-ctype
+      - php-pdo
+      - php-dom
+      - php-filter
+      - php-hash
+      - php-iconv
+      - php-libxml
+      - php-session
+      - php-simplexml
+      - php-xmlreader
+      - php-xmlwriter
+    state: present
+
+- name: Composerをインストール
+  get_url:
+    url: "https://getcomposer.org/installer"
+    dest: "/tmp/composer-installer.php"
+    mode: '0644'
+
+- name: Composerをグローバルインストール
+  shell: |
+    php /tmp/composer-installer.php --install-dir=/usr/local/bin --filename=composer
+  args:
+    creates: /usr/local/bin/composer
+
+- name: Composerの権限を設定
+  file:
+    path: /usr/local/bin/composer
+    mode: '0755'
+
+- name: PHP-FPMサービスを開始・有効化
+  systemd:
+    name: php-fpm
+    state: started
+    enabled: yes
+    daemon_reload: yes
+
+- name: PHP-FPMの設定ファイルをバックアップ
+  copy:
+    src: /etc/php-fpm.d/www.conf
+    dest: /etc/php-fpm.d/www.conf.backup
+    remote_src: yes
+
+- name: PHP-FPMの設定を更新
+  lineinfile:
+    path: /etc/php-fpm.d/www.conf
+    regexp: '^user = '
+    line: 'user = nginx'
+    backup: yes
+
+- name: PHP-FPMのグループ設定を更新
+  lineinfile:
+    path: /etc/php-fpm.d/www.conf
+    regexp: '^group = '
+    line: 'group = nginx'
+    backup: yes
+
+- name: PHP-FPMのlisten設定を更新
+  lineinfile:
+    path: /etc/php-fpm.d/www.conf
+    regexp: '^listen = '
+    line: 'listen = /run/php-fpm/www.sock'
+    backup: yes
+
+- name: PHP-FPMのlisten.owner設定を更新
+  lineinfile:
+    path: /etc/php-fpm.d/www.conf
+    regexp: '^listen.owner = '
+    line: 'listen.owner = nginx'
+    backup: yes
+
+- name: PHP-FPMのlisten.group設定を更新
+  lineinfile:
+    path: /etc/php-fpm.d/www.conf
+    regexp: '^listen.group = '
+    line: 'listen.group = nginx'
+    backup: yes
+
+- name: PHP-FPMのlisten.mode設定を更新
+  lineinfile:
+    path: /etc/php-fpm.d/www.conf
+    regexp: '^listen.mode = '
+    line: 'listen.mode = 0660'
+    backup: yes
+
+- name: PHP-FPMサービスを再起動
+  systemd:
+    name: php-fpm
+    state: restarted

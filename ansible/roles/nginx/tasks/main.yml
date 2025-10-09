@@ -1,0 +1,65 @@
+---
+- name: Apacheサービスを停止・無効化
+  systemd:
+    name: httpd
+    state: stopped
+    enabled: no
+
+- name: Nginxをインストール
+  yum:
+    name: nginx
+    state: present
+
+- name: Nginxサービスを有効化（設定後に開始）
+  systemd:
+    name: nginx
+    enabled: yes
+
+- name: デフォルトのNginx設定をバックアップ
+  copy:
+    src: /etc/nginx/nginx.conf
+    dest: /etc/nginx/nginx.conf.backup
+    remote_src: yes
+
+- name: Nginxの設定ファイルを作成
+  template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+    backup: yes
+  notify: restart nginx
+
+- name: Laravel用のNginx設定を作成
+  template:
+    src: laravel.conf.j2
+    dest: /etc/nginx/conf.d/laravel.conf
+    backup: yes
+  notify: restart nginx
+
+- name: デフォルトのNginxサイト設定を無効化
+  file:
+    path: /etc/nginx/conf.d/default.conf
+    state: absent
+  notify: restart nginx
+
+- name: Nginxのログディレクトリを作成
+  file:
+    path: /var/log/nginx
+    state: directory
+    owner: nginx
+    group: nginx
+    mode: '0755'
+
+- name: Nginxの設定をテスト
+  command: nginx -t
+  register: nginx_test
+  changed_when: false
+
+- name: Nginxの設定テスト結果を表示
+  debug:
+    var: nginx_test.stdout_lines
+
+- name: Nginxサービスを開始
+  systemd:
+    name: nginx
+    state: started
+  when: nginx_test.rc == 0

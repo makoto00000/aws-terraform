@@ -1,0 +1,61 @@
+# VPC情報
+output "vpc_id" {
+  description = "ID of the VPC"
+  value       = aws_vpc.main.id
+}
+
+output "vpc_cidr_block" {
+  description = "CIDR block of the VPC"
+  value       = aws_vpc.main.cidr_block
+}
+
+# サブネット情報
+output "subnet_ids" {
+  description = "IDs of the public subnets"
+  value       = aws_subnet.public[*].id
+}
+
+output "subnet_cidr_blocks" {
+  description = "CIDR blocks of the public subnets"
+  value       = aws_subnet.public[*].cidr_block
+}
+
+# インターネットゲートウェイ情報
+output "internet_gateway_id" {
+  description = "ID of the internet gateway"
+  value       = aws_internet_gateway.main.id
+}
+
+# ルートテーブル情報
+output "route_table_id" {
+  description = "ID of the public route table"
+  value       = aws_route_table.public.id
+}
+
+# EC2インスタンス情報
+output "instance_id" {
+  description = "ID of the EC2 instance"
+  value       = aws_instance.web.id
+}
+
+output "instance_public_ip" {
+  description = "Public IP address of the EC2 instance"
+  value       = aws_instance.web.public_ip
+}
+
+output "instance_public_dns" {
+  description = "Public DNS name of the EC2 instance"
+  value       = aws_instance.web.public_dns
+}
+
+# セキュリティグループ情報
+output "security_group_id" {
+  description = "ID of the web security group"
+  value       = aws_security_group.web.id
+}
+
+# キーペア情報
+output "key_pair_name" {
+  description = "Name of the key pair"
+  value       = var.create_key_pair ? aws_key_pair.main[0].key_name : var.key_name
+}

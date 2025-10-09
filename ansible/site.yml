@@ -1,0 +1,27 @@
+---
+- name: Laravel環境構築
+  hosts: web_servers
+  become: yes
+  vars:
+    php_version: "8.2"
+    laravel_app_name: "laravel-app"
+    laravel_app_path: "/var/www/{{ laravel_app_name }}"
+    nginx_domain: "{{ ansible_default_ipv4.address }}"
+  
+  roles:
+    - php
+    - laravel
+    - nginx
+
+  handlers:
+    - name: restart nginx
+      service:
+        name: nginx
+        state: restarted
+        enabled: yes
+    
+    - name: restart php-fpm
+      service:
+        name: php-fpm
+        state: restarted
+        enabled: yes

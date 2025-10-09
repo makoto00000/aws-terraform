@@ -1,0 +1,96 @@
+---
+- name: 必要なパッケージをインストール
+  yum:
+    name:
+      - git
+      - unzip
+    state: present
+
+- name: アプリケーションディレクトリを作成
+  file:
+    path: "{{ laravel_app_path }}"
+    state: directory
+    owner: nginx
+    group: nginx
+    mode: '0755'
+
+- name: Laravelプロジェクトを作成
+  composer:
+    command: create-project
+    arguments: laravel/laravel {{ laravel_app_path }}
+    working_dir: /tmp
+    prefer_dist: yes
+    no_dev: yes
+  become_user: nginx
+  ignore_errors: yes
+  when: not ansible_check_mode and not (ansible_stat.stat.exists | default(false))
+  register: laravel_create_result
+
+- name: Laravelプロジェクトの所有者を変更
+  file:
+    path: "{{ laravel_app_path }}"
+    owner: nginx
+    group: nginx
+    recurse: yes
+
+- name: Laravelの.envファイルを作成
+  template:
+    src: laravel.env.j2
+    dest: "{{ laravel_app_path }}/.env"
+    owner: nginx
+    group: nginx
+    mode: '0644'
+
+- name: Laravelのストレージディレクトリの権限を設定
+  file:
+    path: "{{ laravel_app_path }}/storage"
+    owner: nginx
+    group: nginx
+    recurse: yes
+    mode: '0775'
+
+- name: Laravelのbootstrap/cacheディレクトリの権限を設定
+  file:
+    path: "{{ laravel_app_path }}/bootstrap/cache"
+    owner: nginx
+    group: nginx
+    recurse: yes
+    mode: '0775'
+
+- name: Laravelのアプリケーションキーを生成
+  command: php artisan key:generate
+  args:
+    chdir: "{{ laravel_app_path }}"
+  become_user: nginx
+
+- name: Laravelの設定をキャッシュ
+  command: php artisan config:cache
+  args:
+    chdir: "{{ laravel_app_path }}"
+  become_user: nginx
+
+- name: Laravelのルートをキャッシュ
+  command: php artisan route:cache
+  args:
+    chdir: "{{ laravel_app_path }}"
+  become_user: nginx
+
+- name: Laravelのビューをキャッシュ
+  command: php artisan view:cache
+  args:
+    chdir: "{{ laravel_app_path }}"
+  become_user: nginx
+
+- name: Laravelの最適化を実行
+  command: php artisan optimize
+  args:
+    chdir: "{{ laravel_app_path }}"
+  become_user: nginx
+
+- name: Laravelのウェルカムページをカスタマイズ
+  template:
+    src: welcome.blade.php.j2
+    dest: "{{ laravel_app_path }}/resources/views/welcome.blade.php"
+    owner: nginx
+    group: nginx
+    mode: '0644'
