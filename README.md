@@ -1,68 +1,85 @@
-# AWS勉強会 - Laravel環境構築手順書
+# AWS 勉強会 - トラブルシューティング環境構築手順書
 
 ## 概要
-この勉強会では、TerraformとAnsibleを使用してAWS上にLaravelアプリケーションを自動構築します。
+
+この勉強会では、Terraform と Ansible を使用して AWS 上に**意図的に問題のある Laravel 環境**を構築し、AWS コンソール上からトラブルシューティングを実施します。
 
 ### 構築される環境
+
 - **AWS EC2** (Amazon Linux 2023)
 - **VPC** (Virtual Private Cloud)
-- **セキュリティグループ** (SSH・HTTPアクセス許可)
-- **Nginx** (Webサーバー)
-- **PHP-FPM** (PHP 8.4)
+- **Application Load Balancer** (ALB)
+- **S3 バケット** (画像ストレージ)
+- **セキュリティグループ** (SSH・HTTP アクセス許可)
+- **Nginx** (Web サーバー)
+- **PHP-FPM** (PHP 8.2)
 - **Laravel** (最新版)
 - **Composer** (依存関係管理)
 
+### 学習目標
+
+この環境では、AWS の各種サービスを使用した Web アプリケーションの構築と運用を学習します。
+
 ### 自動化の特徴
-- **Terraform**: AWSインフラの自動構築
+
+- **Terraform**: AWS インフラの自動構築
 - **Ansible**: アプリケーション環境の自動構築
-- **完全自動化**: Apacheの停止からNginxの起動まで自動実行
+- **完全自動化**: Apache の停止から Nginx の起動まで自動実行
 
 ## 前提条件
+
 - macOS、Linux
-- AWS認証情報の設定
+- AWS 認証情報の設定
 
 ## セットアップ手順
 
 ## 1. 必要なツールのインストール
 
-### 1.1 Homebrewのインストール（すでに入っている方はスキップ）
+### 1.1 Homebrew のインストール（すでに入っている方はスキップ）
+
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
-### 1.2 AWS CLIのインストール
+### 1.2 AWS CLI のインストール
+
 ```bash
 # macOS（Homebrew使用）
 brew install awscli
 ```
 
-### 1.3 Terraformのインストール
+### 1.3 Terraform のインストール
+
 ```bash
 # macOS（Homebrew使用）
 brew install terraform
 ```
 
-### 1.4 Ansibleのインストール
+### 1.4 Ansible のインストール
+
 ```bash
 # macOS（Homebrew使用）
 brew install ansible
 ```
 
 ### 1.5 インストール確認
+
 ```bash
 aws --version
 terraform --version
 ansible --version
 ```
 
-## 2. AWSアカウントの準備
+## 2. AWS アカウントの準備
 
-### 2.1 AWSコンソールでの設定
-1. **AWSコンソール**（https://aws.amazon.com/console/）にログイン
+### 2.1 AWS コンソールでの設定
+
+1. **AWS コンソール**（https://aws.amazon.com/console/）にログイン
 2. 右上のリージョンを**アジアパシフィック（東京）**に変更
 3. **IAM**サービスに移動
 
-### 2.2 IAMユーザーの作成
+### 2.2 IAM ユーザーの作成
+
 1. **ユーザー** → **ユーザーを追加**
 2. ユーザー名：`terraform-user`
 3. **プログラムによるアクセス**を選択
@@ -72,36 +89,42 @@ ansible --version
    - `AmazonVPCFullAccess`
 6. **ユーザーを作成**
 7. **重要**: 以下の情報をメモしてください：
-   - **アクセスキーID**（例：`AKIA...`）
+   - **アクセスキー ID**（例：`AKIA...`）
    - **シークレットアクセスキー**（例：`wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`）
 
 ## 3. プロジェクトのセットアップ
 
 ### 3.1 プロジェクトクローン
+
 ```bash
 git clone https:// .....
+cd aws-terraform
 ```
 
 ### 3.2 設定ファイルの準備
+
 ```bash
-# 認証情報ファイルの作成
-cp .env.example .env
+# 認証情報ファイルの作成（.envファイルが存在しない場合）
+touch .env
 ```
 
-### 3.3 AWS認証情報の設定
+### 3.3 AWS 認証情報の設定
+
 ```bash
 # 認証情報ファイルを編集
 vim .env
 ```
 
 以下の内容に編集してください：
+
 ```
 AWS_ACCESS_KEY_ID=AKIA...（アクセスキーID）
 AWS_SECRET_ACCESS_KEY=...（シークレットキー）
 AWS_DEFAULT_REGION=ap-northeast-1
 ```
 
-### 3.4 SSH鍵の生成
+### 3.4 SSH 鍵の生成
+
 ```bash
 # プロジェクト内にキーディレクトリを作成
 mkdir -p keys
@@ -114,9 +137,10 @@ chmod 600 keys/terraform-key
 chmod 644 keys/terraform-key.pub
 ```
 
-## 4. AWS接続のテスト
+## 4. AWS 接続のテスト
 
 ### 4.1 接続テスト
+
 ```bash
 # 環境変数を読み込み
 set -a && source .env && set +a
@@ -126,23 +150,26 @@ aws sts get-caller-identity
 ```
 
 成功すると以下のような出力が表示されます：
+
 ```json
 {
-    "UserId": "AIDACKCEVSQ6C2EXAMPLE",
-    "Account": "123456789012",
-    "Arn": "arn:aws:iam::123456789012:user/terraform-user"
+  "UserId": "AIDACKCEVSQ6C2EXAMPLE",
+  "Account": "123456789012",
+  "Arn": "arn:aws:iam::123456789012:user/terraform-user"
 }
 ```
 
-## 5. Terraformの実行
+## 5. Terraform の実行
 
-### 5.1 Terraformの初期化
+### 5.1 Terraform の初期化
+
 ```bash
 # Terraformの初期化
 terraform init
 ```
 
 ### 5.2 インフラの構築
+
 ```bash
 # 環境変数を読み込み
 set -a && source .env && set +a
@@ -154,9 +181,10 @@ terraform apply
 # 最後に yes を入力してEnter
 ```
 
-## 6. AnsibleでLaravel環境の構築
+## 6. Ansible で Laravel 環境の構築
 
-### 6.1 Ansibleインベントリの生成
+### 6.1 Ansible インベントリの生成
+
 ```bash
 # Ansibleディレクトリに移動
 cd ansible
@@ -165,50 +193,75 @@ cd ansible
 ./generate-inventory.sh
 ```
 
-### 6.2 Laravel環境の構築
+### 6.2 Laravel 環境の構築
+
 ```bash
 # AnsibleでLaravel環境を構築
 ansible-playbook site.yml -v
 ```
 
 このコマンドで以下が自動的に構築されます：
-- **PHP-FPM** (PHP 8.4)
-- **Nginx** (Webサーバー)
+
+- **PHP-FPM** (PHP 8.2)
+- **Nginx** (Web サーバー)
 - **Laravel** (最新版)
 - **Composer** (依存関係管理)
-- **Apacheの自動停止** (Nginxとの競合を回避)
+- **Apache の自動停止** (Nginx との競合を回避)
+- **S3 画像の表示設定**
 
 ### 6.3 構築内容の確認
-```bash
-# パブリックIPを確認
-cd ..
-terraform output instance_public_ip
 
-# ブラウザでアクセス
-# http://<パブリックIP>
+```bash
+# プロジェクトルートに戻る
+cd ..
+
+# 環境情報を表示
+sh show-instance-info.sh
 ```
 
 ## 7. アプリケーションの確認
 
-### 7.1 Webアプリケーションの確認
+### 7.1 環境情報の確認
 
 ```bash
 sh show-instance-info.sh
 ```
-以下のように表示されるので、ブラウザで確認とSSH接続
+
+以下のように表示されます：
 
 === アクセス方法 ===
-HTTPアクセス: http://<パブリックIP>
+ALB 経由アクセス: http://<ALB の DNS 名>
+EC2 直接アクセス: http://<パブリック IP>
 
-SSHアクセス（作成した秘密鍵を使用）:
-ssh -i keys/terraform-key ec2-user@<パブリックIP>
+=== SSH アクセス（作成した秘密鍵を使用）===
+ssh -i keys/terraform-key ec2-user@<パブリック IP>
 
-### 7.2 Laravelアプリケーションの確認
-ブラウザで `http://<パブリックIP>` にアクセスすると、カスタマイズされたLaravelのウェルカムページが表示されます。
+=== S3 バケット情報 ===
+バケット名: <S3 バケット名>
+バケット ARN: <S3 バケット ARN>
 
-## 8. クリーンアップ
+### 7.2 アプリケーションの動作確認
 
-### 8.1 リソースの削除
+1. **ALB 経由アクセス**: `http://<ALBのDNS名>` にアクセスして Laravel アプリケーションを確認
+2. **EC2 直接アクセス**: `http://<パブリックIP>` にアクセスしてアプリケーションの動作を確認
+3. **S3 画像**: Laravel ページで画像の表示を確認
+
+## 8. 運用とトラブルシューティング
+
+### 8.1 アプリケーションの運用
+
+構築された環境を使用して、以下の運用タスクを実施してください：
+
+1. **Web アプリケーションの動作確認**
+2. **AWS サービスの設定確認**
+3. **問題発生時の対応手順の確認**
+
+AWS コンソールを使用して、必要に応じて設定の調整や問題の解決を行ってください。
+
+## 9. クリーンアップ
+
+### 9.1 リソースの削除
+
 ```bash
 # 環境変数を読み込み
 set -a && source .env && set +a

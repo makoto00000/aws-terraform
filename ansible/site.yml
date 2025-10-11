@@ -7,7 +7,8 @@
     laravel_app_name: "laravel-app"
     laravel_app_path: "/var/www/{{ laravel_app_name }}"
     nginx_domain: "{{ ansible_default_ipv4.address }}"
-  
+    s3_bucket_name: "{{ s3_bucket_name | default('laravel-app-images-xxxxxxxx') }}"
+
   roles:
     - php
     - laravel
@@ -19,7 +20,7 @@
         name: nginx
         state: restarted
         enabled: yes
-    
+
     - name: restart php-fpm
       service:
         name: php-fpm

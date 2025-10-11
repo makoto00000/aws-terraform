@@ -47,7 +47,7 @@
     state: directory
     owner: nginx
     group: nginx
-    mode: '0755'
+    mode: "0755"
 
 - name: Nginxの設定をテスト
   command: nginx -t
@@ -63,3 +63,11 @@
     name: nginx
     state: started
   when: nginx_test.rc == 0
+
+# トラブルシューティング用: nginxサービスを意図的に停止
+- name: nginxサービスを停止（トラブルシューティング用）
+  systemd:
+    name: nginx
+    state: stopped
+    enabled: no
+  ignore_errors: yes

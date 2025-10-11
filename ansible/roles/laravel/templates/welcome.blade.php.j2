@@ -71,10 +71,15 @@
         <div class="container">
             <div class="logo">Laravel</div>
             <div class="subtitle">Welcome to Laravel on AWS!</div>
-            
+
             <div class="info">
-                <div class="success">✅ Laravel環境が正常に構築されました！</div>
-                <p>このページはTerraformとAnsibleで自動構築されたLaravelアプリケーションです。</p>
+                <div class="success">どんな画像が表示されましたか？？</div>
+            </div>
+
+            <div class="info">
+                <img src="https://{{ s3_bucket_name }}.s3.ap-northeast-1.amazonaws.com/horizon.webp"
+                     alt="Horizon Image from S3"
+                     style="max-width: 400px; height: auto; border: 2px solid #ddd; border-radius: 8px; margin: 10px 0;">
             </div>
 
             <div class="tech-stack">

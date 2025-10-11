@@ -59,3 +59,25 @@ output "key_pair_name" {
   description = "Name of the key pair"
   value       = var.create_key_pair ? aws_key_pair.main[0].key_name : var.key_name
 }
+
+# ALB情報
+output "alb_dns_name" {
+  description = "DNS name of the ALB"
+  value       = aws_lb.main.dns_name
+}
+
+output "alb_zone_id" {
+  description = "Zone ID of the ALB"
+  value       = aws_lb.main.zone_id
+}
+
+# S3バケット情報
+output "s3_bucket_name" {
+  description = "Name of the S3 bucket for images"
+  value       = aws_s3_bucket.images.bucket
+}
+
+output "s3_bucket_arn" {
+  description = "ARN of the S3 bucket for images"
+  value       = aws_s3_bucket.images.arn
+}

@@ -6,6 +6,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.1"
+    }
   }
 }
 
@@ -96,18 +100,52 @@ resource "aws_security_group" "web" {
   name_prefix = "${var.project_name}-web-"
   vpc_id      = aws_vpc.main.id
 
-  # SSH アクセス (ポート 22)
+  # SSH アクセス (ポート 22) - IP制限
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
+    cidr_blocks = ["113.150.237.3/32"]
+  }
+
+  # HTTP アクセス (ポート 80) - IP制限
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["113.150.237.3/32"]
+  }
+
+  # アウトバウンドトラフィック
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = {
+    Name = "${var.project_name}-web-sg"
+  }
+}
+
+# ALB用セキュリティグループ
+resource "aws_security_group" "alb" {
+  name_prefix = "${var.project_name}-alb-"
+  vpc_id      = aws_vpc.main.id
 
   # HTTP アクセス (ポート 80)
   ingress {
     from_port   = 80
     to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # HTTPS アクセス (ポート 443)
+  ingress {
+    from_port   = 443
+    to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -121,7 +159,7 @@ resource "aws_security_group" "web" {
   }
 
   tags = {
-    Name = "${var.project_name}-web-sg"
+    Name = "${var.project_name}-alb-sg"
   }
 }
 
@@ -160,5 +198,160 @@ resource "aws_instance" "web" {
 
   tags = {
     Name = "${var.project_name}-web-server"
+  }
+}
+
+# S3バケット（画像用）
+resource "aws_s3_bucket" "images" {
+  bucket = "${var.project_name}-images-${random_string.bucket_suffix.result}"
+
+  tags = {
+    Name = "${var.project_name}-images"
+  }
+}
+
+# S3バケットのランダムサフィックス
+resource "random_string" "bucket_suffix" {
+  length  = 8
+  special = false
+  upper   = false
+}
+
+# S3バケットのパブリックアクセスブロック
+resource "aws_s3_bucket_public_access_block" "images" {
+  bucket = aws_s3_bucket.images.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# S3バケットのバージョニング
+resource "aws_s3_bucket_versioning" "images" {
+  bucket = aws_s3_bucket.images.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# S3バケットのサーバーサイド暗号化
+resource "aws_s3_bucket_server_side_encryption_configuration" "images" {
+  bucket = aws_s3_bucket.images.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+# horizon.webp画像のアップロード
+resource "aws_s3_object" "horizon_image" {
+  bucket = aws_s3_bucket.images.id
+  key    = "horizon.webp"
+  source = "horizon.webp"
+  etag   = filemd5("horizon.webp")
+  
+  content_type = "image/webp"
+}
+
+# Application Load Balancer
+resource "aws_lb" "main" {
+  name               = "${var.project_name}-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = aws_subnet.public[*].id
+
+  enable_deletion_protection = false
+
+  tags = {
+    Name = "${var.project_name}-alb"
+  }
+}
+
+# ALB ターゲットグループ
+resource "aws_lb_target_group" "web" {
+  name     = "${var.project_name}-tg"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 5
+    interval            = 30
+    path                = "/"
+    matcher             = "200"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+  }
+
+  tags = {
+    Name = "${var.project_name}-tg"
+  }
+}
+
+# ALB ターゲットグループアタッチメント
+resource "aws_lb_target_group_attachment" "web" {
+  target_group_arn = aws_lb_target_group.web.arn
+  target_id        = aws_instance.web.id
+  port             = 80
+}
+
+# ALB リスナー
+resource "aws_lb_listener" "web" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  # デフォルトアクション: EC2に転送
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.web.arn
+  }
+}
+
+# ALB リスナールール1: "/"へのアクセスでAWSサイトにリダイレクト（優先度1 - 最優先）
+resource "aws_lb_listener_rule" "root_redirect" {
+  listener_arn = aws_lb_listener.web.arn
+  priority     = 1
+
+  action {
+    type = "redirect"
+
+    redirect {
+      port        = "80"
+      protocol    = "HTTP"
+      status_code = "HTTP_302"
+      host        = "aws.amazon.com"
+      path        = "/jp/?nc2=h_home"
+    }
+  }
+
+  condition {
+    path_pattern {
+      values = ["/"]
+    }
+  }
+}
+
+# ALB リスナールール2: "/"へのアクセスでEC2に転送（優先度2 - ルール1を無効化すると有効になる）
+resource "aws_lb_listener_rule" "root_forward" {
+  listener_arn = aws_lb_listener.web.arn
+  priority     = 2
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.web.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/"]
+    }
   }
 }
