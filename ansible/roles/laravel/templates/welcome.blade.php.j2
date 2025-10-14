@@ -8,7 +8,6 @@
         <style>
             body {
                 font-family: 'Nunito', sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                 margin: 0;
                 padding: 0;
                 min-height: 100vh;
@@ -69,38 +68,17 @@
     </head>
     <body>
         <div class="container">
-            <div class="logo">Laravel</div>
-            <div class="subtitle">Welcome to Laravel on AWS!</div>
+            <div class="logo">Congratulations</div>
+            <div class="subtitle">WEBサイトが表示されました！</div>
 
             <div class="info">
-                <div class="success">どんな画像が表示されましたか？？</div>
+                <div class="success">最後の問題です！どんな画像が表示されましたか？</div>
             </div>
 
             <div class="info">
                 <img src="https://{{ s3_bucket_name }}.s3.ap-northeast-1.amazonaws.com/horizon.webp"
-                     alt="Horizon Image from S3"
+                     alt="どんな画像が表示されましたか？"
                      style="max-width: 400px; height: auto; border: 2px solid #ddd; border-radius: 8px; margin: 10px 0;">
-            </div>
-
-            <div class="tech-stack">
-                <div class="tech-item">🚀 Laravel</div>
-                <div class="tech-item">🐘 PHP</div>
-                <div class="tech-item">🌐 Nginx</div>
-                <div class="tech-item">☁️ AWS EC2</div>
-                <div class="tech-item">🔧 Terraform</div>
-                <div class="tech-item">⚙️ Ansible</div>
-            </div>
-
-            <div class="info">
-                <strong>サーバー情報:</strong><br>
-                <strong>IP:</strong> N/A<br>
-                <strong>Host:</strong> N/A<br>
-                <strong>User Agent:</strong> N/A
-            </div>
-
-            <div class="footer">
-                <p>Powered by Laravel Framework</p>
-                <p>Deployed with Terraform + Ansible</p>
             </div>
         </div>
     </body>

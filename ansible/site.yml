@@ -7,7 +7,7 @@
     laravel_app_name: "laravel-app"
     laravel_app_path: "/var/www/{{ laravel_app_name }}"
     nginx_domain: "{{ ansible_default_ipv4.address }}"
-    s3_bucket_name: "{{ s3_bucket_name | default('laravel-app-images-xxxxxxxx') }}"
+    # s3_bucket_nameはインベントリから取得
 
   roles:
     - php
@@ -16,10 +16,11 @@
 
   handlers:
     - name: restart nginx
+      # トラブルシューティング用: nginxは再起動せずに停止
       service:
         name: nginx
-        state: restarted
-        enabled: yes
+        state: stopped
+        enabled: no
 
     - name: restart php-fpm
       service:

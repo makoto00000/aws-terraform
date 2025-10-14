@@ -22,6 +22,11 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
+# Route53 ホストゾーンの参照
+data "aws_route53_zone" "main" {
+  name = var.domain_name
+}
+
 # ローカルSSH鍵の読み込み
 data "local_file" "public_key" {
   count    = var.create_key_pair ? 1 : 0
@@ -100,20 +105,20 @@ resource "aws_security_group" "web" {
   name_prefix = "${var.project_name}-web-"
   vpc_id      = aws_vpc.main.id
 
-  # SSH アクセス (ポート 22) - IP制限
+  # SSH アクセス (ポート 22) - 全IP許可
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["113.150.237.3/32"]
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # HTTP アクセス (ポート 80) - IP制限
+  # HTTP アクセス (ポート 80) - ALBからのみ許可
   ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["113.150.237.3/32"]
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
   }
 
   # アウトバウンドトラフィック
@@ -134,20 +139,20 @@ resource "aws_security_group" "alb" {
   name_prefix = "${var.project_name}-alb-"
   vpc_id      = aws_vpc.main.id
 
-  # HTTP アクセス (ポート 80)
+  # HTTP アクセス (ポート 80) - IP制限
   ingress {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = var.allowed_ips
   }
 
-  # HTTPS アクセス (ポート 443)
+  # HTTPS アクセス (ポート 443) - IP制限
   ingress {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = var.allowed_ips
   }
 
   # アウトバウンドトラフィック
@@ -302,33 +307,139 @@ resource "aws_lb_target_group_attachment" "web" {
   port             = 80
 }
 
-# ALB リスナー
-resource "aws_lb_listener" "web" {
-  load_balancer_arn = aws_lb.main.arn
-  port              = "80"
-  protocol          = "HTTP"
+# ALB リスナー（削除 - HTTPSリダイレクトに置き換え）
+# resource "aws_lb_listener" "web" {
+#   load_balancer_arn = aws_lb.main.arn
+#   port              = "80"
+#   protocol          = "HTTP"
+#
+#   # デフォルトアクション: EC2に転送
+#   default_action {
+#     type             = "forward"
+#     target_group_arn = aws_lb_target_group.web.arn
+#   }
+# }
 
-  # デフォルトアクション: EC2に転送
+# ALB リスナールール（削除 - HTTPSリスナーに移行）
+# resource "aws_lb_listener_rule" "root_redirect" {
+#   listener_arn = aws_lb_listener.web.arn
+#   priority     = 1
+#
+#   action {
+#     type = "redirect"
+#
+#     redirect {
+#       port        = "80"
+#       protocol    = "HTTP"
+#       status_code = "HTTP_302"
+#       host        = "aws.amazon.com"
+#       path        = "/jp/?nc2=h_home"
+#     }
+#   }
+#
+#   condition {
+#     path_pattern {
+#       values = ["/"]
+#     }
+#   }
+# }
+#
+# resource "aws_lb_listener_rule" "root_forward" {
+#   listener_arn = aws_lb_listener.web.arn
+#   priority     = 2
+#
+#   action {
+#     type             = "forward"
+#     target_group_arn = aws_lb_target_group.web.arn
+#   }
+#
+#   condition {
+#     path_pattern {
+#       values = ["/"]
+#     }
+#   }
+# }
+
+# ACM証明書のリクエスト
+resource "aws_acm_certificate" "web" {
+  domain_name       = var.domain_name
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = {
+    Name = "${var.project_name}-cert"
+  }
+}
+
+# DNS検証用のRoute53レコード
+resource "aws_route53_record" "cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.web.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = data.aws_route53_zone.main.zone_id
+}
+
+# ACM証明書の検証
+resource "aws_acm_certificate_validation" "web" {
+  certificate_arn         = aws_acm_certificate.web.arn
+  validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
+}
+
+# Route53 レコード（ALB用）
+resource "aws_route53_record" "web" {
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = var.domain_name
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.main.dns_name
+    zone_id                = aws_lb.main.zone_id
+    evaluate_target_health = true
+  }
+}
+
+# HTTPSリスナーの追加
+resource "aws_lb_listener" "web_https" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = "443"
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
+  certificate_arn   = aws_acm_certificate_validation.web.certificate_arn
+
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.web.arn
   }
 }
 
-# ALB リスナールール1: "/"へのアクセスでAWSサイトにリダイレクト（優先度1 - 最優先）
-resource "aws_lb_listener_rule" "root_redirect" {
-  listener_arn = aws_lb_listener.web.arn
+# HTTPSリスナールール1: "/"へのアクセスでAWSサイトにリダイレクト（優先度1 - 最優先）
+resource "aws_lb_listener_rule" "https_root_redirect" {
+  listener_arn = aws_lb_listener.web_https.arn
   priority     = 1
 
   action {
     type = "redirect"
 
     redirect {
-      port        = "80"
-      protocol    = "HTTP"
+      port        = "443"
+      protocol    = "HTTPS"
       status_code = "HTTP_302"
       host        = "aws.amazon.com"
-      path        = "/jp/?nc2=h_home"
+      path        = "/jp/"
+      query       = "nc2=h_home"
     }
   }
 
@@ -339,9 +450,9 @@ resource "aws_lb_listener_rule" "root_redirect" {
   }
 }
 
-# ALB リスナールール2: "/"へのアクセスでEC2に転送（優先度2 - ルール1を無効化すると有効になる）
-resource "aws_lb_listener_rule" "root_forward" {
-  listener_arn = aws_lb_listener.web.arn
+# HTTPSリスナールール2: "/"へのアクセスでEC2に転送（優先度2 - 次点）
+resource "aws_lb_listener_rule" "https_root_forward" {
+  listener_arn = aws_lb_listener.web_https.arn
   priority     = 2
 
   action {
@@ -352,6 +463,26 @@ resource "aws_lb_listener_rule" "root_forward" {
   condition {
     path_pattern {
       values = ["/"]
+    }
+  }
+}
+
+# HTTPからHTTPSへのリダイレクト（ALB経由）
+resource "aws_lb_listener" "web_http_redirect" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+      host        = var.domain_name
+      path        = "/#{path}"
+      query       = "#{query}"
     }
   }
 }

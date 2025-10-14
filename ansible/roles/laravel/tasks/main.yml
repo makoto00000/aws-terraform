@@ -12,7 +12,7 @@
     state: directory
     owner: nginx
     group: nginx
-    mode: '0755'
+    mode: "0755"
 
 - name: Laravelプロジェクトを作成
   composer:
@@ -39,7 +39,7 @@
     dest: "{{ laravel_app_path }}/.env"
     owner: nginx
     group: nginx
-    mode: '0644'
+    mode: "0644"
 
 - name: Laravelのストレージディレクトリの権限を設定
   file:
@@ -47,7 +47,7 @@
     owner: nginx
     group: nginx
     recurse: yes
-    mode: '0775'
+    mode: "0775"
 
 - name: Laravelのbootstrap/cacheディレクトリの権限を設定
   file:
@@ -55,13 +55,54 @@
     owner: nginx
     group: nginx
     recurse: yes
-    mode: '0775'
+    mode: "0775"
+
+- name: SQLiteデータベースファイルを作成
+  file:
+    path: "{{ laravel_app_path }}/database/database.sqlite"
+    state: touch
+    owner: nginx
+    group: nginx
+    mode: "0644"
 
 - name: Laravelのアプリケーションキーを生成
-  command: php artisan key:generate
+  command: php artisan key:generate --force
   args:
     chdir: "{{ laravel_app_path }}"
   become_user: nginx
+  register: key_generate_result
+  failed_when: false
+
+- name: APP_KEYが生成されたか確認
+  lineinfile:
+    path: "{{ laravel_app_path }}/.env"
+    regexp: "^APP_KEY="
+    line: 'APP_KEY={{ key_generate_result.stdout_lines | select("match", "base64:.*") | first | default("") }}'
+    state: present
+  when: key_generate_result.stdout_lines is defined and key_generate_result.stdout_lines | select("match", "base64:.*") | list | length > 0
+
+- name: APP_KEYが空の場合のフォールバック処理
+  shell: |
+    cd {{ laravel_app_path }}
+    php artisan key:generate --show
+  become_user: nginx
+  register: key_show_result
+  when: key_generate_result.stdout_lines is not defined or key_generate_result.stdout_lines | select("match", "base64:.*") | list | length == 0
+
+- name: フォールバックでAPP_KEYを設定
+  lineinfile:
+    path: "{{ laravel_app_path }}/.env"
+    regexp: "^APP_KEY="
+    line: "APP_KEY={{ key_show_result.stdout.strip() }}"
+    state: present
+  when: key_show_result is defined and key_show_result.stdout is defined
+
+- name: Laravelの設定キャッシュをクリア
+  command: php artisan config:clear
+  args:
+    chdir: "{{ laravel_app_path }}"
+  become_user: nginx
+  ignore_errors: yes
 
 - name: Laravelの設定をキャッシュ
   command: php artisan config:cache
@@ -93,4 +134,4 @@
     dest: "{{ laravel_app_path }}/resources/views/welcome.blade.php"
     owner: nginx
     group: nginx
-    mode: '0644'
+    mode: "0644"
