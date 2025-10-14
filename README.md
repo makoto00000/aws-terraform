@@ -9,8 +9,10 @@
 - **AWS EC2** (Amazon Linux 2023)
 - **VPC** (Virtual Private Cloud)
 - **Application Load Balancer** (ALB)
+- **Route53** (カスタムドメイン設定)
+- **ACM** (SSL 証明書)
 - **S3 バケット** (画像ストレージ)
-- **セキュリティグループ** (SSH・HTTP アクセス許可)
+- **セキュリティグループ** (SSH・HTTP/HTTPS アクセス許可)
 - **Nginx** (Web サーバー)
 - **PHP-FPM** (PHP 8.2)
 - **Laravel** (最新版)
@@ -24,7 +26,6 @@
 
 - **Terraform**: AWS インフラの自動構築
 - **Ansible**: アプリケーション環境の自動構築
-- **完全自動化**: Apache の停止から Nginx の起動まで自動実行
 
 ## 前提条件
 
@@ -72,6 +73,15 @@ ansible --version
 
 ## 2. AWS アカウントの準備
 
+### 2.0 Route53 ホストゾーンの確認
+
+**重要**: この手順を実行する前に、使用するドメインのホストゾーンが Route53 に存在することを確認してください。
+
+1. **AWS コンソール** → **Route53** サービスに移動
+2. **ホストゾーン** を確認
+3. 使用するドメイン（例: `horizon-infra-study01.click`）のホストゾーンが存在することを確認
+4. 存在しない場合は、ホストゾーンを作成してください
+
 ### 2.1 AWS コンソールでの設定
 
 1. **AWS コンソール**（https://aws.amazon.com/console/）にログイン
@@ -82,11 +92,14 @@ ansible --version
 
 1. **ユーザー** → **ユーザーを追加**
 2. ユーザー名：`terraform-user`
-3. **プログラムによるアクセス**を選択
+3. **AWS マネジメントコンソールへのユーザーアクセスを提供する**のチェックは不要
 4. **既存のポリシーを直接アタッチ**を選択
 5. 以下のポリシーを検索・選択：
    - `AmazonEC2FullAccess`
    - `AmazonVPCFullAccess`
+   - `AmazonRoute53FullAccess`
+   - `AWSCertificateManagerFullAccess`
+   - `AmazonS3FullAccess`
 6. **ユーザーを作成**
 7. **重要**: 以下の情報をメモしてください：
    - **アクセスキー ID**（例：`AKIA...`）
@@ -104,15 +117,13 @@ cd aws-terraform
 ### 3.2 設定ファイルの準備
 
 ```bash
-# 認証情報ファイルの作成（.envファイルが存在しない場合）
 touch .env
 ```
 
 ### 3.3 AWS 認証情報の設定
 
 ```bash
-# 認証情報ファイルを編集
-vim .env
+vi .env
 ```
 
 以下の内容に編集してください：
@@ -121,6 +132,7 @@ vim .env
 AWS_ACCESS_KEY_ID=AKIA...（アクセスキーID）
 AWS_SECRET_ACCESS_KEY=...（シークレットキー）
 AWS_DEFAULT_REGION=ap-northeast-1
+DOMAIN_NAME=カスタムドメイン
 ```
 
 ### 3.4 SSH 鍵の生成
@@ -175,7 +187,7 @@ terraform init
 set -a && source .env && set +a
 
 # Terraformでインフラを構築
-terraform apply
+terraform apply -var="domain_name=$DOMAIN_NAME"
 
 # 作成されるリソースが表示される
 # 最後に yes を入力してEnter
@@ -209,65 +221,16 @@ ansible-playbook site.yml -v
 - **Apache の自動停止** (Nginx との競合を回避)
 - **S3 画像の表示設定**
 
-### 6.3 構築内容の確認
+## 7. クリーンアップ
 
-```bash
-# プロジェクトルートに戻る
-cd ..
-
-# 環境情報を表示
-sh show-instance-info.sh
-```
-
-## 7. アプリケーションの確認
-
-### 7.1 環境情報の確認
-
-```bash
-sh show-instance-info.sh
-```
-
-以下のように表示されます：
-
-=== アクセス方法 ===
-ALB 経由アクセス: http://<ALB の DNS 名>
-EC2 直接アクセス: http://<パブリック IP>
-
-=== SSH アクセス（作成した秘密鍵を使用）===
-ssh -i keys/terraform-key ec2-user@<パブリック IP>
-
-=== S3 バケット情報 ===
-バケット名: <S3 バケット名>
-バケット ARN: <S3 バケット ARN>
-
-### 7.2 アプリケーションの動作確認
-
-1. **ALB 経由アクセス**: `http://<ALBのDNS名>` にアクセスして Laravel アプリケーションを確認
-2. **EC2 直接アクセス**: `http://<パブリックIP>` にアクセスしてアプリケーションの動作を確認
-3. **S3 画像**: Laravel ページで画像の表示を確認
-
-## 8. 運用とトラブルシューティング
-
-### 8.1 アプリケーションの運用
-
-構築された環境を使用して、以下の運用タスクを実施してください：
-
-1. **Web アプリケーションの動作確認**
-2. **AWS サービスの設定確認**
-3. **問題発生時の対応手順の確認**
-
-AWS コンソールを使用して、必要に応じて設定の調整や問題の解決を行ってください。
-
-## 9. クリーンアップ
-
-### 9.1 リソースの削除
+### 7.1 リソースの削除
 
 ```bash
 # 環境変数を読み込み
 set -a && source .env && set +a
 
 # 全てのリソースを削除
-terraform destroy
+terraform destroy -var="domain_name=$DOMAIN_NAME"
 
 # 作成されるリソースが表示される
 # 最後に yes を入力してEnter
