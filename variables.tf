@@ -48,3 +48,16 @@ variable "public_key_path" {
   type        = string
   default     = "keys/terraform-key.pub"
 }
+
+# ドメイン設定
+variable "domain_name" {
+  description = "既存のRoute53ホストゾーンのドメイン名"
+  type        = string
+}
+
+# セキュリティ設定
+variable "allowed_ips" {
+  description = "ALBへのアクセスを許可するIPアドレス（CIDR形式）"
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}

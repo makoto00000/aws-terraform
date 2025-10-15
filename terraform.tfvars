@@ -19,3 +19,9 @@ public_key_path = "keys/terraform-key.pub"
 # 方法2: 既存のキーペアを使用
 # create_key_pair = false
 # key_name = "your-existing-key-pair-name"
+
+# セキュリティ設定
+# ALBへのアクセスを許可するIPアドレス（CIDR形式）
+# 例: ["113.150.237.3/32", "203.0.113.0/24"]
+# 全IP許可の場合は: ["0.0.0.0/0"]
+allowed_ips = ["113.150.237.3/32"]
